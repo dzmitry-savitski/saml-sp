@@ -62,7 +62,7 @@ Options:
 
 ## More examples
 ### How to disable SSL verification:
-`docker run -it -p 7070:7070 -e "ENV NODE_TLS_REJECT_UNAUTHORIZED=0" dsavitski/saml-sp`
+`docker run -it -p 7070:7070 -e "NODE_TLS_REJECT_UNAUTHORIZED=0" dsavitski/saml-sp`
 
 ### How to add an additional host:
 `docker run -it -p 7070:7070 --add-host idp.example.com:192.168.59.100 dsavitski/saml-sp --idpMetaUrl https://<host1>/metadata`
