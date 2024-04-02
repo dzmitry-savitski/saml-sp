@@ -1,0 +1,17 @@
+<!DOCTYPE HTML>
+<html lang="en"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:insert="~{fragments/fragments :: header}"></th:block>
+</head>
+
+<body>
+
+<div th:replace="~{fragments/fragments :: menu}"></div>
+<main class="container" role="main">
+    <h1>Welcome</h1>
+</main>
+<th:block th:insert="~{fragments/fragments :: footer}"></th:block>
+
+</body>
+</html>
