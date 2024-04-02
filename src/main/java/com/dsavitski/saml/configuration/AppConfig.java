@@ -19,8 +19,11 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationFa
 @Configuration
 public class AppConfig {
     private static final String[] AUTH_WHITELIST = {"/webjars/**", "/favicon.ico", "/", "/metadata", "/force", "/session", "/re-login"};
-    @Value("${spring.security.saml2.relyingparty.registration.sp.nameidformat:}")
+    @Value("${spring.security.saml2.relyingparty.registration.sp.nameidpolicy.nameidformat:}")
     private String nameIdFormat;
+
+    @Value("${spring.security.saml2.relyingparty.registration.sp.nameidpolicy.allowcreate:true}")
+    private boolean allowCreate;
 
     // https://spring.io/blog/2022/02/21/spring-security-without-the-websecurityconfigureradapter
     @Bean
@@ -37,6 +40,7 @@ public class AppConfig {
             if (!nameIdFormat.isEmpty()) {
                 NameIDPolicy policy = new NameIDPolicyBuilder().buildObject();
                 policy.setFormat(nameIdFormat);
+                policy.setAllowCreate(allowCreate);
                 context.getAuthnRequest().setNameIDPolicy(policy);
             }
 

@@ -17,7 +17,9 @@ spring:
             acs:
               location: "{baseUrl}/login/saml2/sso/{registrationId}"
               binding: POST
-            nameidformat: "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+            nameidpolicy:
+              nameidformat: "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+              allowcreate: true
             ################################# IDP CONFIGURATION #############################################################
             assertingparty:
               metadata-uri: https://idp/metadata
