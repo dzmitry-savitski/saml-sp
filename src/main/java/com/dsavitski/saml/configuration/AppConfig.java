@@ -1,34 +1,102 @@
 package com.dsavitski.saml.configuration;
 
+import com.dsavitski.saml.utils.CertificateUtils;
 import jakarta.servlet.http.HttpSession;
-import org.opensaml.saml.saml2.core.NameIDPolicy;
-import org.opensaml.saml.saml2.core.impl.NameIDPolicyBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.saml2.core.Saml2X509Credential;
+import org.springframework.security.saml2.provider.service.registration.InMemoryRelyingPartyRegistrationRepository;
+import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistration;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
+import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrations;
 import org.springframework.security.saml2.provider.service.web.DefaultRelyingPartyRegistrationResolver;
 import org.springframework.security.saml2.provider.service.web.RelyingPartyRegistrationResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.OpenSaml4AuthenticationRequestResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.Saml2AuthenticationRequestResolver;
-import org.springframework.security.web.authentication.AuthenticationFailureHandler;
-import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
+import org.springframework.security.web.SecurityFilterChain;
+
+import java.util.function.Consumer;
+
+import static com.dsavitski.saml.utils.CertificateUtils.getVerificationCredential;
 
 
 @Configuration
+@EnableWebSecurity
 public class AppConfig {
-    private static final String[] AUTH_WHITELIST = {"/webjars/**", "/favicon.ico", "/", "/metadata", "/force", "/session", "/re-login"};
-    @Value("${spring.security.saml2.relyingparty.registration.sp.nameidpolicy.nameidformat:}")
-    private String nameIdFormat;
+    @Autowired
+    private SPProperties spProperties;
 
-    @Value("${spring.security.saml2.relyingparty.registration.sp.nameidpolicy.allowcreate:true}")
-    private boolean allowCreate;
+    @Autowired
+    private IDPProperties idpProperties;
 
-    // https://spring.io/blog/2022/02/21/spring-security-without-the-websecurityconfigureradapter
     @Bean
-    public WebSecurityCustomizer webSecurityCustomizer() {
-        return (web) -> web.ignoring().requestMatchers(AUTH_WHITELIST);
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                           @Value("${sso.login-processing-url}") String loginProcessingUrl) throws Exception {
+        http.authorizeHttpRequests(authorize -> authorize
+                .requestMatchers(spProperties.getAuthEndpoints()).authenticated()
+                .anyRequest().permitAll()
+        ).saml2Login((saml2) -> saml2.loginProcessingUrl(loginProcessingUrl));
+        return http.build();
+    }
+
+    @Bean
+    public RelyingPartyRegistrationRepository relyingPartyRegistrations() {
+
+        RelyingPartyRegistration.Builder builder;
+        if (isDefined(idpProperties.getMetadataLocation())) {
+            builder = RelyingPartyRegistrations
+                    .fromMetadataLocation(idpProperties.getMetadataLocation())
+                    .registrationId(spProperties.getRegistrationId());
+        } else {
+            builder = RelyingPartyRegistration.withRegistrationId(spProperties.getRegistrationId());
+        }
+
+        Saml2X509Credential signingCert = CertificateUtils.getSigningCredential(spProperties.getSigning());
+        Saml2X509Credential encryptionCert = CertificateUtils.getEncryptionCredential(spProperties.getEncryption());
+
+        RelyingPartyRegistration registration = builder
+                .entityId(spProperties.getEntityId())
+                .nameIdFormat(spProperties.getNameIdFormat())
+                .signingX509Credentials(saml2X509Credentials -> {
+                    saml2X509Credentials.add(signingCert);
+                })
+                .decryptionX509Credentials(saml2X509Credentials -> {
+                    saml2X509Credentials.add(encryptionCert);
+                })
+                .assertionConsumerServiceLocation(spProperties.getAcs().getLocation())
+                .assertionConsumerServiceBinding(spProperties.getAcs().getBinding())
+                .assertingPartyDetails(buildIdp())
+                .authnRequestsSigned(spProperties.isSignAuthnRequest())
+                .build();
+        return new InMemoryRelyingPartyRegistrationRepository(registration);
+    }
+
+    private Consumer<RelyingPartyRegistration.AssertingPartyDetails.Builder> buildIdp() {
+        return idp -> {
+            if (isDefined(idpProperties.getEntityId())) {
+                idp.entityId(idpProperties.getEntityId());
+            }
+            if (idpProperties.getSinglesignon() != null) {
+                if (isDefined(idpProperties.getSinglesignon().getUrl())) {
+                    idp.singleSignOnServiceLocation(idpProperties.getSinglesignon().getUrl());
+                }
+                if (idpProperties.getSinglesignon().getBinding() != null) {
+                    idp.singleSignOnServiceBinding(idpProperties.getSinglesignon().getBinding());
+                }
+                if (idpProperties.getSinglesignon().getWantRequestSigned() != null) {
+                    idp.wantAuthnRequestsSigned(idpProperties.getSinglesignon().getWantRequestSigned());
+                }
+            }
+            if (idpProperties.getVerification() != null &&
+                    idpProperties.getVerification().getCertificateLocation() != null) {
+                idp.verificationX509Credentials(certificates ->
+                        certificates.add(getVerificationCredential(idpProperties.getVerification())));
+            }
+        };
     }
 
     @Bean
@@ -36,15 +104,7 @@ public class AppConfig {
         RelyingPartyRegistrationResolver registrationResolver = new DefaultRelyingPartyRegistrationResolver(registrations);
         OpenSaml4AuthenticationRequestResolver authenticationRequestResolver = new OpenSaml4AuthenticationRequestResolver(registrationResolver);
         authenticationRequestResolver.setAuthnRequestCustomizer((context) -> {
-            // 1. Set NameId
-            if (!nameIdFormat.isEmpty()) {
-                NameIDPolicy policy = new NameIDPolicyBuilder().buildObject();
-                policy.setFormat(nameIdFormat);
-                policy.setAllowCreate(allowCreate);
-                context.getAuthnRequest().setNameIDPolicy(policy);
-            }
-
-            // 2. Set forceAuntN if needed
+            // Set forceAuntN when needed
             HttpSession session = context.getRequest().getSession();
             if (session.getAttribute("force") != null) {
                 context.getAuthnRequest().setForceAuthn(true);
@@ -54,17 +114,7 @@ public class AppConfig {
         return authenticationRequestResolver;
     }
 
-    @Bean
-    AuthenticationFailureHandler errorhandler() {
-        SimpleUrlAuthenticationFailureHandler handler = new SimpleUrlAuthenticationFailureHandler();
-        handler.setDefaultFailureUrl("/error");
-        return handler;
+    private boolean isDefined(String property) {
+        return property != null && !property.isBlank();
     }
-
-//    @Bean
-//    public Filter saml2MetadataFilter(RelyingPartyRegistrationRepository repository) {
-//        Saml2MetadataFilter saml2MetadataFilter = new Saml2MetadataFilter(new DefaultRelyingPartyRegistrationResolver(repository), new OpenSamlMetadataResolver());
-////        saml2MetadataFilter.setRequestMatcher(new AntPathRequestMatcher("/metadata", "GET"));
-//        return saml2MetadataFilter;
-//    }
 }
