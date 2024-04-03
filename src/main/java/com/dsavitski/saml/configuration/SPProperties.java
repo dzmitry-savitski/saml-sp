@@ -15,6 +15,7 @@ public class SPProperties {
     private Credentials signing;
     private Credentials encryption;
     private Boolean signAuthnRequest;
+    private Boolean allowCreate;
 
     private Acs acs;
 
@@ -81,6 +82,13 @@ public class SPProperties {
 
     public void setSignAuthnRequest(Boolean signAuthnRequest) {
         this.signAuthnRequest = signAuthnRequest;
+    }
+
+    public Boolean getAllowCreate() {
+        return allowCreate;
+    }
+    public void setAllowCreate(Boolean allowCreate) {
+        this.allowCreate = allowCreate;
     }
 
 

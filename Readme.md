@@ -25,6 +25,7 @@ saml.sp.encryption.certificate-location=classpath:certificates/sp.crt
 #saml.sp.encryption.privatekey-location=file:/tmp/sp.key
 #saml.sp.encryption.certificate-location=file:/tmp/sp.crt
 saml.sp.sign-authn-request=false
+saml.sp.allow-create=true
 saml.sp.acs.location={baseUrl}/sso/{registrationId}
 saml.sp.acs.binding=POST
 

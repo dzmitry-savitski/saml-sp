@@ -2,6 +2,7 @@ package com.dsavitski.saml.configuration;
 
 import com.dsavitski.saml.utils.CertificateUtils;
 import jakarta.servlet.http.HttpSession;
+import org.opensaml.saml.saml2.core.NameIDPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -104,6 +105,13 @@ public class AppConfig {
         RelyingPartyRegistrationResolver registrationResolver = new DefaultRelyingPartyRegistrationResolver(registrations);
         OpenSaml4AuthenticationRequestResolver authenticationRequestResolver = new OpenSaml4AuthenticationRequestResolver(registrationResolver);
         authenticationRequestResolver.setAuthnRequestCustomizer((context) -> {
+
+            // Set AllowCreate in SAML Request, some IDPs don't work without it
+            NameIDPolicy nameIDPolicy = context.getAuthnRequest().getNameIDPolicy();
+            if (nameIDPolicy != null && spProperties.getAllowCreate() != null) {
+                nameIDPolicy.setAllowCreate(spProperties.getAllowCreate());
+            }
+
             // Set forceAuntN when needed
             HttpSession session = context.getRequest().getSession();
             if (session.getAttribute("force") != null) {
